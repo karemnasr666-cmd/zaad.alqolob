@@ -1,0 +1,66 @@
+name: Build Zad Al Qolob APK
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '**'
+      - '.github/workflows/build.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+
+      - name: Find project root
+        shell: bash
+        run: |
+          SCRIPT=$(find . -type f -path '*/scripts/prepare_offline_data.py' -print -quit)
+          if [ -z "$SCRIPT" ]; then
+            echo 'Could not find scripts/prepare_offline_data.py' >&2
+            find . -maxdepth 5 -type f | head -200
+            exit 1
+          fi
+          ROOT=$(dirname "$(dirname "$SCRIPT")")
+          echo "PROJECT_ROOT=$ROOT" >> "$GITHUB_ENV"
+          echo "Project root: $ROOT"
+
+      - name: Prepare offline data
+        shell: bash
+        run: |
+          cd "$PROJECT_ROOT"
+          python3 scripts/prepare_offline_data.py
+
+      - name: Build APK
+        shell: bash
+        run: |
+          cd "$PROJECT_ROOT/android"
+          gradle --no-daemon assembleDebug
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: zad-alqolob-debug-apk
+          path: ${{ env.PROJECT_ROOT }}/android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
